@@ -96,7 +96,7 @@
     </div>
   </div>
 
-  <video id="ar-video" loop playsinline crossorigin="anonymous">
+  <video id="ar-video" loop playsinline muted>
     <source src="videoplayback.mp4" type="video/mp4">
   </video>
 
@@ -118,13 +118,19 @@
       errorUi.style.display = 'block';
     });
 
-    // When video is buffered enough to play, show the Start button
-    video.addEventListener('canplay', () => {
+    // CÓDIGO ACTUALIZADO: Verifica si el video carga rápido desde el servidor
+    const showButton = () => {
       loadingText.style.display = 'none';
       startBtn.style.display = 'block';
-    });
+    };
 
-    // AQUÍ SE ACTUALIZÓ EL NOMBRE DEL ARCHIVO MIND
+    video.addEventListener('canplay', showButton);
+
+    // Truco para servidores rápidos o navegadores con caché
+    if (video.readyState >= 3) {
+      showButton();
+    }
+
     const mindarThree = new MindARThree({
       container: document.body,
       imageTargetSrc: 'targets.mind',
