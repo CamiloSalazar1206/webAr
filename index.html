@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <title>Xbox 360 AR Cinematic Experience</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background-color: #000;
+      font-family: sans-serif;
+    }
+
+    /* UI Overlay Layer */
+    #ui-layer {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      z-index: 999;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      align-items: center;
+      background: rgba(10, 0, 0, 0.9);
+      color: white;
+    }
+
+    /* Loading State */
+    #loading-text {
+      font-size: 1.2rem;
+      letter-spacing: 2px;
+      color: #ff3333;
+      text-transform: uppercase;
+      animation: pulse 1.5s infinite;
+    }
+
+    /* Tap to Start Button */
+    #start-btn {
+      display: none; /* Hidden until resources load */
+      padding: 15px 40px;
+      font-size: 1.5rem;
+      font-weight: bold;
+      background-color: #ff0000;
+      color: #fff;
+      border: 2px solid #550000;
+      border-radius: 8px;
+      cursor: pointer;
+      text-transform: uppercase;
+      box-shadow: 0 0 15px #ff0000;
+    }
+
+    /* Error / Fallback UI */
+    #error-ui {
+      display: none;
+      text-align: center;
+      border: 2px solid #ff0000;
+      padding: 20px;
+      background: rgba(50, 0, 0, 0.8);
+    }
+    #error-ui h2 { margin-top: 0; color: #ff3333; }
+
+    @keyframes pulse {
+      0% { opacity: 0.5; }
+      50% { opacity: 1; }
+      100% { opacity: 0.5; }
+    }
+
+    /* Keep video element strictly hidden off-DOM */
+    #ar-video {
+      display: none;
+    }
+  </style>
+
+<script type="importmap">
+    {
+      "imports": {
+        "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+        "mindar-image-three": "https://cdn.jsdelivr.net/npm/mind-ar@1.2.5/dist/mindar-image-three.prod.js"
+      }
+    }
+  </script>
+</head>
+<body>
+
+  <div id="ui-layer">
+    <div id="loading-text">Summoning AR Resources...</div>
+    <button id="start-btn">Tap to Start</button>
+    
+    <div id="error-ui">
+      <h2>Signal Lost</h2>
+      <p>Failed to load the cinematic video.<br>Please check your connection and reload.</p>
+    </div>
+  </div>
+
+  <video id="ar-video" loop playsinline crossorigin="anonymous">
+    <source src="videoplayback.mp4" type="video/mp4">
+  </video>
+
+  <script type="module">
+    import * as THREE from 'three';
+    import { MindARThree } from 'mindar-image-three';
+
+    // UI DOM Elements
+    const uiLayer = document.getElementById('ui-layer');
+    const loadingText = document.getElementById('loading-text');
+    const startBtn = document.getElementById('start-btn');
+    const errorUi = document.getElementById('error-ui');
+    const video = document.getElementById('ar-video');
+
+    // Video Fallback/Error Handling
+    video.addEventListener('error', () => {
+      loadingText.style.display = 'none';
+      startBtn.style.display = 'none';
+      errorUi.style.display = 'block';
+    });
+
+    // When video is buffered enough to play, show the Start button
+    video.addEventListener('canplay', () => {
+      loadingText.style.display = 'none';
+      startBtn.style.display = 'block';
+    });
+
+    // AQUÍ SE ACTUALIZÓ EL NOMBRE DEL ARCHIVO MIND
+    const mindarThree = new MindARThree({
+      container: document.body,
+      imageTargetSrc: 'targets.mind',
+      filterMinCF: 0.0001, // Optimization for tracking stability
+      filterBeta: 0.001
+    });
+
+    const { renderer, scene, camera } = mindarThree;
+
+    // --- AR Scene Setup --- //
+    
+    // 1. Solid Video Plane
+    const videoTexture = new THREE.VideoTexture(video);
+    videoTexture.colorSpace = THREE.SRGBColorSpace;
+    videoTexture.minFilter = THREE.LinearFilter; // Mobile optimization
+    videoTexture.magFilter = THREE.LinearFilter;
+
+    // Strict requirement: No transparency, solid rendering. 
+    const videoMaterial = new THREE.MeshBasicMaterial({ 
+      map: videoTexture,
+      transparent: false 
+    });
+    
+    // 16:9 Aspect Ratio 
+    const videoWidth = 1.6;
+    const videoHeight = 0.9;
+    const videoGeometry = new THREE.PlaneGeometry(videoWidth, videoHeight);
+    const videoMesh = new THREE.Mesh(videoGeometry, videoMaterial);
+    
+    // Floating slightly above the Xbox 360 (Z handles depth, Y handles height)
+    videoMesh.position.set(0, 0.6, 0.1); 
+
+    // 2. Glowing Red Border (Solid plane slightly larger behind the video)
+    const borderWidth = videoWidth + 0.05;
+    const borderHeight = videoHeight + 0.05;
+    const borderGeometry = new THREE.PlaneGeometry(borderWidth, borderHeight);
+    const borderMaterial = new THREE.MeshBasicMaterial({ 
+      color: 0xff0000, 
+      transparent: false // Solid neon red
+    });
+    const borderMesh = new THREE.Mesh(borderGeometry, borderMaterial);
+    // Push it barely behind the video mesh
+    borderMesh.position.set(0, 0.6, 0.08); 
+
+    // 3. Demonic Red Particles
+    const particleCount = 150; // Kept low for mobile performance
+    const particleGeometry = new THREE.BufferGeometry();
+    const particlePositions = new Float32Array(particleCount * 3);
+    const particleVelocities = [];
+
+    // Scatter particles around the console area
+    for (let i = 0; i < particleCount; i++) {
+      particlePositions[i * 3]     = (Math.random() - 0.5) * 2.5; // X
+      particlePositions[i * 3 + 1] = (Math.random() - 0.5) * 1.5; // Y
+      particlePositions[i * 3 + 2] = (Math.random() - 0.5) * 1.0; // Z
+
+      particleVelocities.push({
+        x: (Math.random() - 0.5) * 0.01,
+        y: Math.random() * 0.015 + 0.005 // Always float upwards
+      });
+    }
+
+    particleGeometry.setAttribute('position', new THREE.BufferAttribute(particlePositions, 3));
+    
+    // Standard basic points material (Solid squares)
+    const particleMaterial = new THREE.PointsMaterial({ 
+      color: 0xff0000, 
+      size: 0.04,
+      transparent: false
+    });
+    const particleSystem = new THREE.Points(particleGeometry, particleMaterial);
+    
+    // Attach everything to MindAR Anchor (0 = first image target)
+    const anchor = mindarThree.addAnchor(0);
+    anchor.group.add(borderMesh);
+    anchor.group.add(videoMesh);
+    anchor.group.add(particleSystem);
+
+    // --- Interaction & Render Loop --- //
+    
+    startBtn.addEventListener('click', async () => {
+      // Hide UI
+      uiLayer.style.display = 'none';
+      
+      // Force play video inside user gesture
+      video.play();
+      
+      // Start AR Engine
+      await mindarThree.start();
+
+      // Render Loop inside AR engine
+      renderer.setAnimationLoop(() => {
+        
+        // Particle Animation Logic
+        const positions = particleSystem.geometry.attributes.position.array;
+        
+        for (let i = 0; i < particleCount; i++) {
+          // Apply upward drift
+          positions[i * 3 + 1] += particleVelocities[i].y;
+          positions[i * 3]     += particleVelocities[i].x;
+
+          // Reset particle to bottom if it floats too high
+          if (positions[i * 3 + 1] > 1.5) {
+            positions[i * 3 + 1] = -0.5; // Back to base
+            positions[i * 3]     = (Math.random() - 0.5) * 2.5; // Random X
+          }
+        }
+        
+        // Flag geometry for update
+        particleSystem.geometry.attributes.position.needsUpdate = true;
+
+        // Render scene
+        renderer.render(scene, camera);
+      });
+    });
+  </script>
+</body>
+</html>
